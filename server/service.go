@@ -6,9 +6,11 @@ import (
 	"net"
 	"sync/atomic"
 
+	"github.com/ethereum/go-ethereum/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	"github.com/SlimeMutation/rpc-service/database"
 	"github.com/SlimeMutation/rpc-service/protobuf/wallet"
 )
 
@@ -21,6 +23,8 @@ type RpcServerConfig struct {
 
 type RpcServer struct {
 	*RpcServerConfig
+	db *database.DB
+
 	wallet.UnimplementedWalletServiceServer
 	stopped atomic.Bool
 }
@@ -34,19 +38,20 @@ func (s *RpcServer) Stopped() bool {
 	return s.stopped.Load()
 }
 
-func NewRpcServer(config *RpcServerConfig) (*RpcServer, error) {
+func NewRpcServer(db *database.DB, config *RpcServerConfig) (*RpcServer, error) {
 	return &RpcServer{
 		RpcServerConfig: config,
+		db:              db,
 	}, nil
 }
 
-func (s *RpcServer) Start() error {
+func (s *RpcServer) Start(ctx context.Context) error {
 	go func(s *RpcServer) {
 		addr := fmt.Sprintf("%s:%d", s.GrpcHostname, s.GrpcPort)
-		fmt.Println("start rpc services", "addr", addr)
+		log.Info("start rpc services", "addr", addr)
 		listener, err := net.Listen("tcp", addr)
 		if err != nil {
-			fmt.Println("Could not start tcp listener. ")
+			log.Error("Could not start tcp listener. ")
 		}
 
 		opt := grpc.MaxRecvMsgSize(MaxRecvMessageSize)
@@ -61,9 +66,9 @@ func (s *RpcServer) Start() error {
 
 		wallet.RegisterWalletServiceServer(gs, s)
 
-		fmt.Println("Grpc info", "port", s.GrpcPort, "address", listener.Addr())
+		log.Info("Grpc info", "port", s.GrpcPort, "address", listener.Addr())
 		if err := gs.Serve(listener); err != nil {
-			fmt.Println("Could not GRPC services")
+			log.Error("Could not GRPC services")
 		}
 	}(s)
 	return nil
